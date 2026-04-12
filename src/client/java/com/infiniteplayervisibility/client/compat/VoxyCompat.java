@@ -1,16 +1,15 @@
 package com.infiniteplayervisibility.client.compat;
 
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.WorldRenderer;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -29,11 +28,11 @@ public final class VoxyCompat {
 	private VoxyCompat() {
 	}
 
-	public static boolean shouldRenderPlayer(net.minecraft.entity.player.PlayerEntity player) {
+	public static boolean shouldRenderPlayer(net.minecraft.world.entity.player.Player player) {
 		return shouldRenderEntity(player);
 	}
 
-	public static boolean shouldRenderUnloadedPlayer(net.minecraft.entity.player.PlayerEntity player) {
+	public static boolean shouldRenderUnloadedPlayer(net.minecraft.world.entity.player.Player player) {
 		return shouldRenderEntity(player);
 	}
 
@@ -46,8 +45,8 @@ public final class VoxyCompat {
 			return true;
 		}
 
-		MinecraftClient client = MinecraftClient.getInstance();
-		if (client.world == null || client.gameRenderer == null || client.worldRenderer == null) {
+		Minecraft client = Minecraft.getInstance();
+		if (client.level == null || client.gameRenderer == null || client.levelRenderer == null) {
 			return true;
 		}
 
@@ -56,27 +55,27 @@ public final class VoxyCompat {
 			return true;
 		}
 
-		Vec3d cameraPos = client.gameRenderer.getCamera().getCameraPos();
-		BlockPos cameraBlockPos = BlockPos.ofFloored(cameraPos);
-		BlockPos entityBlockPos = entity.getBlockPos();
-		long worldTime = client.world.getTime();
+		Vec3 cameraPos = client.gameRenderer.getMainCamera().position();
+		BlockPos cameraBlockPos = BlockPos.containing(cameraPos);
+		BlockPos entityBlockPos = entity.blockPosition();
+		long worldTime = client.level.getGameTime();
 
 		CacheEntry cached = CACHE.get(entity.getId());
 		if (cached != null && cached.matches(worldTime, cameraBlockPos, entityBlockPos)) {
 			return cached.visible();
 		}
 
-		boolean visible = isVisibleWithVoxy(client.worldRenderer, cameraPos, entity);
+		boolean visible = isVisibleWithVoxy(client.levelRenderer, cameraPos, entity);
 		CACHE.put(entity.getId(), new CacheEntry(worldTime, cameraBlockPos, entityBlockPos, visible));
 		pruneCache(worldTime);
 		return visible;
 	}
 
 	private static boolean usesVoxyOcclusion(Entity entity) {
-		return entity instanceof PlayerEntity || entity instanceof LivingEntity;
+		return entity instanceof Player || entity instanceof LivingEntity;
 	}
 
-	private static boolean isVisibleWithVoxy(WorldRenderer worldRenderer, Vec3d cameraPos, Entity entity) {
+	private static boolean isVisibleWithVoxy(LevelRenderer worldRenderer, Vec3 cameraPos, Entity entity) {
 		Object renderSystem = REFLECTION.getRenderSystem(worldRenderer);
 		if (renderSystem == null) {
 			return true;
@@ -88,7 +87,7 @@ public final class VoxyCompat {
 			return true;
 		}
 
-		for (Vec3d samplePoint : getSamplePoints(entity)) {
+		for (Vec3 samplePoint : getSamplePoints(entity)) {
 			if (!isOccluded(engine, mapper, cameraPos, samplePoint)) {
 				return true;
 			}
@@ -97,19 +96,19 @@ public final class VoxyCompat {
 		return false;
 	}
 
-	private static boolean isOccluded(Object engine, Object mapper, Vec3d start, Vec3d end) {
-		Vec3d delta = end.subtract(start);
+	private static boolean isOccluded(Object engine, Object mapper, Vec3 start, Vec3 end) {
+		Vec3 delta = end.subtract(start);
 		double distance = delta.length();
 		if (distance <= START_OFFSET + END_PADDING) {
 			return false;
 		}
 
-		Vec3d direction = delta.multiply(1.0D / distance);
+		Vec3 direction = delta.scale(1.0D / distance);
 		double maxDistance = distance - END_PADDING;
-		double step = MathHelper.clamp(distance / MAX_SAMPLES, MIN_STEP, MAX_STEP);
+		double step = Mth.clamp(distance / MAX_SAMPLES, MIN_STEP, MAX_STEP);
 
 		for (double travelled = START_OFFSET; travelled < maxDistance; travelled += step) {
-			Vec3d sample = start.add(direction.multiply(travelled));
+			Vec3 sample = start.add(direction.scale(travelled));
 			if (isOpaqueAt(engine, mapper, sample)) {
 				return true;
 			}
@@ -118,10 +117,10 @@ public final class VoxyCompat {
 		return false;
 	}
 
-	private static boolean isOpaqueAt(Object engine, Object mapper, Vec3d point) {
-		int blockX = MathHelper.floor(point.x);
-		int blockY = MathHelper.floor(point.y);
-		int blockZ = MathHelper.floor(point.z);
+	private static boolean isOpaqueAt(Object engine, Object mapper, Vec3 point) {
+		int blockX = Mth.floor(point.x);
+		int blockY = Mth.floor(point.y);
+		int blockZ = Mth.floor(point.z);
 
 		for (int level = 0; level <= REFLECTION.maxLodLevel; level++) {
 			Long mappingId = REFLECTION.getMappingId(engine, level, blockX, blockY, blockZ);
@@ -149,26 +148,26 @@ public final class VoxyCompat {
 		}
 	}
 
-	private static Vec3d[] getSamplePoints(Entity entity) {
-		Box box = entity.getBoundingBox();
-		Vec3d center = box.getCenter();
+	private static Vec3[] getSamplePoints(Entity entity) {
+		AABB box = entity.getBoundingBox();
+		Vec3 center = box.getCenter();
 		if (entity instanceof LivingEntity livingEntity) {
-			double eyeY = MathHelper.clamp(livingEntity.getEyeY(), box.minY + 0.2D, box.maxY - 0.05D);
-			double chestY = MathHelper.lerp(0.55D, box.minY, box.maxY);
-			double shoulderX = Math.min(0.25D, box.getLengthX() * 0.25D);
-			double shoulderZ = Math.min(0.25D, box.getLengthZ() * 0.25D);
+			double eyeY = Mth.clamp(livingEntity.getEyeY(), box.minY + 0.2D, box.maxY - 0.05D);
+			double chestY = Mth.lerp(0.55D, box.minY, box.maxY);
+			double shoulderX = Math.min(0.25D, box.getXsize() * 0.25D);
+			double shoulderZ = Math.min(0.25D, box.getZsize() * 0.25D);
 
-			return new Vec3d[] {
-				new Vec3d(center.x, eyeY, center.z),
-				new Vec3d(center.x, chestY, center.z),
-				new Vec3d(center.x + shoulderX, chestY, center.z),
-				new Vec3d(center.x - shoulderX, chestY, center.z),
-				new Vec3d(center.x, chestY, center.z + shoulderZ),
-				new Vec3d(center.x, chestY, center.z - shoulderZ)
+			return new Vec3[] {
+				new Vec3(center.x, eyeY, center.z),
+				new Vec3(center.x, chestY, center.z),
+				new Vec3(center.x + shoulderX, chestY, center.z),
+				new Vec3(center.x - shoulderX, chestY, center.z),
+				new Vec3(center.x, chestY, center.z + shoulderZ),
+				new Vec3(center.x, chestY, center.z - shoulderZ)
 			};
 		}
 
-		return new Vec3d[] {center};
+		return new Vec3[] {center};
 	}
 
 	private record CacheEntry(long worldTime, BlockPos cameraPos, BlockPos playerPos, boolean visible) {
@@ -226,7 +225,7 @@ public final class VoxyCompat {
 			return this.broken;
 		}
 
-		private Object getRenderSystem(WorldRenderer worldRenderer) {
+		private Object getRenderSystem(LevelRenderer worldRenderer) {
 			try {
 				if (this.getRenderSystemMethod == null) {
 					this.getRenderSystemMethod = worldRenderer.getClass().getMethod("voxy$getRenderSystem");

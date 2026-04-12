@@ -4,15 +4,15 @@ import com.infiniteplayervisibility.EntityVisibilityRules;
 import com.infiniteplayervisibility.client.compat.VoxyCompat;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 
 public final class ClientEntityVisibility {
 	private static final LongSet RENDERABLE_ENTITY_POSITIONS = new LongOpenHashSet();
-	private static ClientWorld cachedRenderableEntityWorld;
+	private static ClientLevel cachedRenderableEntityWorld;
 	private static long cachedRenderableEntityWorldTime = Long.MIN_VALUE;
 	private static long cachedRenderableEntityCameraPos = Long.MIN_VALUE;
 
@@ -24,7 +24,7 @@ public final class ClientEntityVisibility {
 	}
 
 	public static boolean shouldForceClientTick(Entity entity) {
-		return shouldOverrideDistanceLimit(entity) && !entity.isPlayer() && isWithinConfiguredVisibility(entity);
+		return shouldOverrideDistanceLimit(entity) && !entity.isAlwaysTicking() && isWithinConfiguredVisibility(entity);
 	}
 
 	public static boolean shouldKeepClientTicking(Entity entity) {
@@ -35,7 +35,7 @@ public final class ClientEntityVisibility {
 		return shouldOverrideDistanceLimit(entity) && isWithinConfiguredVisibility(entity) && VoxyCompat.shouldRenderEntity(entity);
 	}
 
-	public static boolean hasRenderableEntityAt(ClientWorld world, BlockPos pos) {
+	public static boolean hasRenderableEntityAt(ClientLevel world, BlockPos pos) {
 		refreshRenderableEntityPositionCache(world);
 		return RENDERABLE_ENTITY_POSITIONS.contains(pos.asLong());
 	}
@@ -53,27 +53,27 @@ public final class ClientEntityVisibility {
 			return true;
 		}
 
-		MinecraftClient client = MinecraftClient.getInstance();
-		if (client.gameRenderer == null || client.gameRenderer.getCamera() == null) {
+		Minecraft client = Minecraft.getInstance();
+		if (client.gameRenderer == null || client.gameRenderer.getMainCamera() == null) {
 			return true;
 		}
 
-		Vec3d cameraPos = client.gameRenderer.getCamera().getCameraPos();
+		Vec3 cameraPos = client.gameRenderer.getMainCamera().position();
 		double maxDistance = visibilityDistance;
-		return entity.squaredDistanceTo(cameraPos.x, cameraPos.y, cameraPos.z) <= maxDistance * maxDistance;
+		return entity.distanceToSqr(cameraPos.x, cameraPos.y, cameraPos.z) <= maxDistance * maxDistance;
 	}
 
-	private static void refreshRenderableEntityPositionCache(ClientWorld world) {
-		long worldTime = world.getTime();
+	private static void refreshRenderableEntityPositionCache(ClientLevel world) {
+		long worldTime = world.getGameTime();
 		long cameraPos = getCameraBlockPos();
 		if (world == cachedRenderableEntityWorld && worldTime == cachedRenderableEntityWorldTime && cameraPos == cachedRenderableEntityCameraPos) {
 			return;
 		}
 
 		RENDERABLE_ENTITY_POSITIONS.clear();
-		for (Entity entity : world.getEntities()) {
+		for (Entity entity : world.entitiesForRendering()) {
 			if (shouldIndexRenderableEntity(entity)) {
-				RENDERABLE_ENTITY_POSITIONS.add(entity.getBlockPos().asLong());
+				RENDERABLE_ENTITY_POSITIONS.add(entity.blockPosition().asLong());
 			}
 		}
 
@@ -83,12 +83,12 @@ public final class ClientEntityVisibility {
 	}
 
 	private static long getCameraBlockPos() {
-		MinecraftClient client = MinecraftClient.getInstance();
-		if (client.gameRenderer == null || client.gameRenderer.getCamera() == null) {
+		Minecraft client = Minecraft.getInstance();
+		if (client.gameRenderer == null || client.gameRenderer.getMainCamera() == null) {
 			return Long.MIN_VALUE;
 		}
 
-		return BlockPos.ofFloored(client.gameRenderer.getCamera().getCameraPos()).asLong();
+		return BlockPos.containing(client.gameRenderer.getMainCamera().position()).asLong();
 	}
 
 	private static boolean shouldIndexRenderableEntity(Entity entity) {

@@ -2,19 +2,18 @@ package com.infiniteplayervisibility.client.gui;
 
 import com.infiniteplayervisibility.config.InfinitePlayerVisibilityConfig;
 import com.infiniteplayervisibility.config.InfinitePlayerVisibilityConfigManager;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.CyclingButtonWidget;
-import net.minecraft.client.gui.widget.SliderWidget;
-import net.minecraft.screen.ScreenTexts;
-import net.minecraft.text.Text;
-
 import java.util.Locale;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractSliderButton;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.CycleButton;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.CommonComponents;
+import net.minecraft.network.chat.Component;
 
 public final class InfinitePlayerVisibilityConfigScreen extends Screen {
-	private static final Text TITLE = Text.translatable("screen.infinite_player_visibility.title");
-	private static final Text SUBTITLE = Text.translatable("screen.infinite_player_visibility.subtitle");
+	private static final Component TITLE = Component.translatable("screen.infinite_player_visibility.title");
+	private static final Component SUBTITLE = Component.translatable("screen.infinite_player_visibility.subtitle");
 	private static final int OPTIONS_WIDTH = 240;
 	private static final int BUTTON_WIDTH = 115;
 
@@ -33,46 +32,47 @@ public final class InfinitePlayerVisibilityConfigScreen extends Screen {
 		int leftX = centerX - OPTIONS_WIDTH / 2;
 		int y = 68;
 
-		this.addDrawableChild(
-			CyclingButtonWidget.onOffBuilder(this.workingCopy.renderRemotePlayers())
-				.build(leftX, y, OPTIONS_WIDTH, 20, Text.translatable("option.infinite_player_visibility.remote_players"), (button, value) -> {
+		this.addRenderableWidget(
+			CycleButton.onOffBuilder(this.workingCopy.renderRemotePlayers())
+				.create(leftX, y, OPTIONS_WIDTH, 20, Component.translatable("option.infinite_player_visibility.remote_players"), (button, value) -> {
 					this.workingCopy.setRenderRemotePlayers(value);
 				})
 		);
 
 		y += 24;
-		this.addDrawableChild(
-			CyclingButtonWidget.onOffBuilder(this.workingCopy.renderRemoteEntities())
-				.build(leftX, y, OPTIONS_WIDTH, 20, Text.translatable("option.infinite_player_visibility.remote_entities"), (button, value) -> {
+		this.addRenderableWidget(
+			CycleButton.onOffBuilder(this.workingCopy.renderRemoteEntities())
+				.create(leftX, y, OPTIONS_WIDTH, 20, Component.translatable("option.infinite_player_visibility.remote_entities"), (button, value) -> {
 					this.workingCopy.setRenderRemoteEntities(value);
 				})
 		);
 
 		y += 28;
-		this.addDrawableChild(new VisibilityDistanceSlider(leftX, y, OPTIONS_WIDTH, 20, this.workingCopy.visibilityDistanceBlocks(), this.workingCopy));
+		this.addRenderableWidget(new VisibilityDistanceSlider(leftX, y, OPTIONS_WIDTH, 20, this.workingCopy.visibilityDistanceBlocks(), this.workingCopy));
 
 		int bottomY = this.height - 28;
-		this.addDrawableChild(ButtonWidget.builder(ScreenTexts.DONE, button -> this.saveAndClose()).dimensions(centerX - BUTTON_WIDTH - 5, bottomY, BUTTON_WIDTH, 20).build());
-		this.addDrawableChild(ButtonWidget.builder(ScreenTexts.CANCEL, button -> this.close()).dimensions(centerX + 5, bottomY, BUTTON_WIDTH, 20).build());
+		this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.saveAndClose()).bounds(centerX - BUTTON_WIDTH - 5, bottomY, BUTTON_WIDTH, 20).build());
+		this.addRenderableWidget(Button.builder(CommonComponents.GUI_CANCEL, button -> this.onClose()).bounds(centerX + 5, bottomY, BUTTON_WIDTH, 20).build());
 	}
 
 	@Override
-	public void close() {
-		if (this.client != null) {
-			this.client.setScreen(this.parent);
+	public void onClose() {
+		if (this.minecraft != null) {
+			this.minecraft.setScreen(this.parent);
 		}
 	}
 
 	@Override
-	public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
-		context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 18, 16777215);
-		context.drawCenteredTextWithShadow(this.textRenderer, SUBTITLE, this.width / 2, 34, 11184810);
-		super.render(context, mouseX, mouseY, deltaTicks);
+	public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float deltaTicks) {
+		this.extractMenuBackground(context);
+		super.extractRenderState(context, mouseX, mouseY, deltaTicks);
+		context.centeredText(this.font, this.title, this.width / 2, 18, 16777215);
+		context.centeredText(this.font, SUBTITLE, this.width / 2, 34, 11184810);
 	}
 
 	private void saveAndClose() {
 		InfinitePlayerVisibilityConfigManager.setConfig(this.workingCopy);
-		this.close();
+		this.onClose();
 	}
 
 	private static double blocksToSliderValue(int blocks) {
@@ -97,25 +97,25 @@ public final class InfinitePlayerVisibilityConfigScreen extends Screen {
 		return InfinitePlayerVisibilityConfig.clampVisibilityDistanceBlocks((int)Math.round(interpolated));
 	}
 
-	private static Text formatDistanceText(int blocks) {
+	private static Component formatDistanceText(int blocks) {
 		if (blocks >= InfinitePlayerVisibilityConfig.MAX_VISIBILITY_DISTANCE_BLOCKS) {
-			return Text.translatable("option.infinite_player_visibility.visibility_distance.infinite");
+			return Component.translatable("option.infinite_player_visibility.visibility_distance.infinite");
 		}
 
 		int chunks = Math.max(1, (int)Math.ceil(blocks / 16.0D));
-		return Text.translatable(
+		return Component.translatable(
 			"option.infinite_player_visibility.visibility_distance.value",
 			String.format(Locale.ROOT, "%,d", chunks),
 			String.format(Locale.ROOT, "%,d", blocks)
 		);
 	}
 
-	private static final class VisibilityDistanceSlider extends SliderWidget {
+	private static final class VisibilityDistanceSlider extends AbstractSliderButton {
 		private final InfinitePlayerVisibilityConfig config;
 		private int blocks;
 
 		private VisibilityDistanceSlider(int x, int y, int width, int height, int initialBlocks, InfinitePlayerVisibilityConfig config) {
-			super(x, y, width, height, ScreenTexts.EMPTY, blocksToSliderValue(initialBlocks));
+			super(x, y, width, height, CommonComponents.EMPTY, blocksToSliderValue(initialBlocks));
 			this.config = config;
 			this.blocks = InfinitePlayerVisibilityConfig.clampVisibilityDistanceBlocks(initialBlocks);
 			this.updateMessage();
@@ -124,7 +124,7 @@ public final class InfinitePlayerVisibilityConfigScreen extends Screen {
 		@Override
 		protected void updateMessage() {
 			this.setMessage(
-				Text.translatable("option.infinite_player_visibility.visibility_distance", formatDistanceText(this.blocks))
+				Component.translatable("option.infinite_player_visibility.visibility_distance", formatDistanceText(this.blocks))
 			);
 		}
 

@@ -1,9 +1,9 @@
 package com.infiniteplayervisibility.client.mixin;
 
 import com.infiniteplayervisibility.client.ClientEntityVisibility;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
-import net.minecraft.world.EntityList;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.entity.EntityTickList;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -12,15 +12,15 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(ClientWorld.class)
+@Mixin(ClientLevel.class)
 abstract class ClientWorldMixin {
 	@Shadow
 	@Final
-	private EntityList entityList;
+	private EntityTickList tickingEntities;
 
 	@Shadow
 	@Nullable
-	public abstract Entity getEntityById(int id);
+	public abstract Entity getEntity(int id);
 
 	@Inject(method = "addEntity", at = @At("TAIL"))
 	private void infinitePlayerVisibility$startForcedEntityTicking(Entity entity, CallbackInfo ci) {
@@ -28,14 +28,14 @@ abstract class ClientWorldMixin {
 			ClientEntityVisibility.invalidateRenderableEntityPositionCache();
 		}
 
-		if (ClientEntityVisibility.shouldForceClientTick(entity) && !this.entityList.has(entity)) {
-			this.entityList.add(entity);
+		if (ClientEntityVisibility.shouldForceClientTick(entity) && !this.tickingEntities.contains(entity)) {
+			this.tickingEntities.add(entity);
 		}
 	}
 
 	@Inject(method = "removeEntity", at = @At("HEAD"))
 	private void infinitePlayerVisibility$stopForcedEntityTicking(int entityId, Entity.RemovalReason removalReason, CallbackInfo ci) {
-		Entity entity = this.getEntityById(entityId);
+		Entity entity = this.getEntity(entityId);
 		if (entity == null) {
 			return;
 		}
@@ -44,8 +44,8 @@ abstract class ClientWorldMixin {
 			ClientEntityVisibility.invalidateRenderableEntityPositionCache();
 		}
 
-		if (ClientEntityVisibility.shouldForceClientTick(entity) && this.entityList.has(entity)) {
-			this.entityList.remove(entity);
+		if (ClientEntityVisibility.shouldForceClientTick(entity) && this.tickingEntities.contains(entity)) {
+			this.tickingEntities.remove(entity);
 		}
 	}
 }

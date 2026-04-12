@@ -1,7 +1,7 @@
 package com.infiniteplayervisibility.client.mixin;
 
 import com.infiniteplayervisibility.client.ClientEntityVisibility;
-import net.minecraft.entity.ItemEntity;
+import net.minecraft.world.entity.item.ItemEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ItemEntity.class)
 abstract class ItemEntityMixin {
 	@Shadow
-	private int itemAge;
+	private int age;
 
 	@Shadow
 	private int pickupDelay;
@@ -19,11 +19,11 @@ abstract class ItemEntityMixin {
 	@Inject(method = "tick", at = @At("HEAD"), cancellable = true)
 	private void infinitePlayerVisibility$skipRemoteItemPhysics(CallbackInfo ci) {
 		ItemEntity entity = (ItemEntity)(Object)this;
-		if (!entity.getEntityWorld().isClient() || !ClientEntityVisibility.shouldForceClientTick(entity)) {
+		if (!entity.level().isClientSide() || !ClientEntityVisibility.shouldForceClientTick(entity)) {
 			return;
 		}
 
-		if (entity.getStack().isEmpty()) {
+		if (entity.getItem().isEmpty()) {
 			entity.discard();
 			ci.cancel();
 			return;
@@ -34,8 +34,8 @@ abstract class ItemEntityMixin {
 			this.pickupDelay--;
 		}
 
-		if (this.itemAge != -32768) {
-			this.itemAge++;
+		if (this.age != -32768) {
+			this.age++;
 		}
 
 		ci.cancel();

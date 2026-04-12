@@ -2,8 +2,8 @@ package com.infiniteplayervisibility;
 
 import com.infiniteplayervisibility.config.InfinitePlayerVisibilityConfig;
 import com.infiniteplayervisibility.config.InfinitePlayerVisibilityConfigManager;
-import net.minecraft.entity.Entity;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 
 public final class EntityVisibilityRules {
 	public static final int INFINITE_TRACKING_DISTANCE_BLOCKS = 30000000;
@@ -17,7 +17,7 @@ public final class EntityVisibilityRules {
 		}
 
 		InfinitePlayerVisibilityConfig config = InfinitePlayerVisibilityConfigManager.getConfig();
-		return entity.isPlayer() ? config.renderRemotePlayers() : config.renderRemoteEntities();
+		return entity.isAlwaysTicking() ? config.renderRemotePlayers() : config.renderRemoteEntities();
 	}
 
 	public static int getConfiguredTrackingDistanceBlocks(Entity entity) {
@@ -29,10 +29,10 @@ public final class EntityVisibilityRules {
 			return false;
 		}
 
-		if (entity.isPlayer()) {
+		if (entity.isAlwaysTicking()) {
 			return true;
 		}
 
-		return entity.getEntityWorld() instanceof ServerWorld serverWorld && serverWorld.shouldTickEntityAt(entity.getBlockPos());
+		return entity.level() instanceof ServerLevel serverWorld && serverWorld.isPositionEntityTicking(entity.blockPosition());
 	}
 }
